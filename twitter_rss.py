@@ -5,11 +5,12 @@ from BeautifulSoup import BeautifulSoup
 import urllib2
 import re
 import arrow
+from jinja2 import Template
 
 class Tweet(object):
 
     def __init__(self, text, meta, get_pics=False):
-        self.raw_text = text
+        self.raw_text = str(text).decode(encoding='UTF-8')
         self.set_info(meta)
         self.get_pics = get_pics
 
@@ -22,6 +23,7 @@ class Tweet(object):
             timestamp = re.sub(r'\(u\'data-time\', u\'(.*)\'\)', r'\1', str(span.attrs[1]))
 
             self.date = self.cleanTimestamp(timestamp)
+            self.author = 'ton auteur que je sais pas comment tu trouves en parsant'
 
     def __repr__(self):
         return '<Tweet "{text}"" at {date}'.format(text=self.__str__(), date=self.date)
@@ -36,18 +38,26 @@ class Tweet(object):
             to_replace = [{'<s>@</s>': '@'},
                           {'href="/': 'href="http://twitter.com/'}]
             for item in to_delete:
-                output = re.sub(item, '', str(output))
+                output = re.sub(item, '', output)
             for item in to_replace:
                 for old, new in item.items():
-                    output = re.sub(old, new, str(output))
+                    output = re.sub(old, new, output)
         else:
             to_delete = self.TWEET_DELETE
             for item in to_delete:
-                output = re.sub(item, '', str(output))
+                output = re.sub(item, '', output)
         return output
 
     def cleanTimestamp(self,timestamp):
         return arrow.Arrow.fromtimestamp(float(timestamp))
+
+    def to_jinja2(self):
+        return {
+            'author'  : self.author,
+            'link' : self.link,
+            'date' : self.date.strftime('%a, %d %b %Y %H:%M:%S %z'),
+            'content' : self.clean_text(True),
+        }
 
     TWIT_DELETE = [
         ' class="js-tweet-text tweet-text"',
@@ -88,6 +98,13 @@ class TweetGetter(object):
             for meta, text in zip(content.findAll("small", "time"), content.findAll("p", "js-tweet-text tweet-text")):
                 self.tweets.append(Tweet(text, meta))
 
+    def to_rss(self, server='localhost'):
+        with open('rss-model.tpl') as template_file:
+            items = list(map(lambda tweet: tweet.to_jinja2(), self.tweets))
+            template = Template(template_file.read())
+            return template.render(server=server, title=self.url, url=self.url, tweets=items)
+
+
 
 class UserTweetGetter(TweetGetter):
     def __init__(self, username, get_pics = False):
@@ -107,7 +124,8 @@ class HashtagTweetGetter(TweetGetter):
 
 if __name__ == '__main__':
     tweets = UserTweetGetter('framasoft')
-    import pdb; pdb.set_trace()
+    print tweets.to_rss()
+    #import pdb; pdb.set_trace()
 
 
 #     def generateHtml(self):
@@ -160,46 +178,6 @@ if __name__ == '__main__':
 #         else:
 #             print self.nick + ': Already updated, nothing to do'
 
-#     def generateRss(self):
-#         ''' Create a Rss feed with tweets in self.tweets '''
-
-#         if not config.account:
-#             self.nick = self.nick + '-search'
-
-#         try:
-#             with open(config.DIR + self.nick + '.xml', 'w') as html:
-
-#                 html.write(self.XML_TOP.format(
-#                     nick=self.nick, title=self.title, server=self.server))
-
-#                 for i, item in enumerate(self.tweets):
-
-#                     date = str(self.tweets[i][0][1])
-#                     link = str(self.tweets[i][0][0])
-#                     twit = str(self.tweets[i][1])
-#                     title = str(self.tweets[i][0][2])
-#                     author = str(self.tweets[i][0][0]).split('/')[1]
-
-#                     html.write(self.XML_FOR.format(
-#                         title=title, link=link, date=date, twit=twit, author=author))
-
-
-#                     if PICS == True and self.tweets[i][2]:
-
-#                         img = self.tweets[i][2][0]
-#                         alt = self.tweets[i][2][1]
-
-#                         html.write(self.XML_IMG.format(
-#                             img = img, title = title))
-
-#                     html.write(self.XML_ITEM)
-
-#                 html.write(self.XML_END)
-#             html.close()
-#         except IOError:
-#             print 'Error: The file ' + self.nick + '.xml could not be written into ' + config.DIR + '.'
-#             pass
-
 #     def isRssValid(self):
 #         ''' Debug function: check through W3C Feed Validator if feed valid '''
 
@@ -229,34 +207,3 @@ if __name__ == '__main__':
 #                         pics = re.findall(r'(https?://pbs.twimg.com/media/\S+.jpg:large)', str(soup))
 #                         title = soup.title.string
 #                         self.tweets[i][2] = [pics[0], title]
-
-#     XML_TOP = '''<?xml version="1.0" encoding="UTF-8"?>
-# <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
-#     <channel>
-#         <atom:link href="http://{server}/{nick}.xml" rel="self" type="application/rss+xml" />
-#         <title>{title}</title>
-#         <link>https://twitter.com/{nick}</link>
-#         <description>twitter-rss of {nick}</description>
-#         <language>fr</language>
-
-#         '''
-
-#     XML_FOR = '''
-#                 <item>
-#                 <title>{author}: {title}</title>
-#                 <guid>https://twitter.com{link}</guid>
-#                 <link>https://twitter.com{link}</link>
-#                 <pubDate>{date}</pubDate>
-#                 <description><![CDATA[{author}: {twit}'''
-
-#     XML_IMG = '''
-#                 <img src="{img}" alt="{title}" style="max-width: 50%; height: 50%;"/>
-#                 '''
-
-#     XML_ITEM = ''']]></description>
-#                 </item>
-#                 '''
-
-#     XML_END = '''
-#     </channel>
-# </rss>'''
